@@ -32,23 +32,32 @@ const result = await Begin<ApiError>()
 ## Context Binding (Named Async Context)
 
 ```ts
-// Build context from independent Futures
-const result = await Bind({
-  user: api.getUser(),
-  count: 42
+// Native Promise
+try {
+    const user = await api.getUser()
+    let posts
+    try {
+        posts = await api.getPosts(user.id)
+    } catch (e) {
+        posts = []
+    }
+    const comments = await api.getComments(user.id).catch(() => [])
+    return { user, posts, comments }
+} catch (err) {
+    console.error(err)
+    return null
+}
+
+// Future 
+return Bind<ApiError>({
+    user: api.getUser()
 })
-.bind({
-  posts: ({ user }) => api.getPosts(user.id),
-  timestamp: Date.now()
-})
-.tap(({ posts }) => console.log(`${posts.length} posts loaded`))
-.map(({ user, posts, count, timestamp }) => ({
-  userName: user.name,
-  postTitles: posts.map(p => p.title),
-  count,
-  timestamp
-}))
-// enriched: { user: User, posts: Post[], count: number, timestamp: number }
+    .bind({
+        posts: ({user}) => api.getPosts(user.id).unwrapOr([]),
+        comments: ({user}) => api.getComments(user.id).unwrapOr([])
+    })
+    .tapErr(console.error)
+    .unwrapOr(null)
 ```
 
 ## Features
