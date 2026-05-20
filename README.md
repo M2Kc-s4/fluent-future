@@ -1,7 +1,7 @@
 
 # fluent-future
 
->> Type-safe async operations with functional composition. Like `Promise` but with typed errors and monadic methods.
+Type-safe async operations with functional composition. Like `Promise` but with typed errors and monadic methods.
 
 
 ## Problem ❌
