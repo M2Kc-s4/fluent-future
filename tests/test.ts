@@ -34,7 +34,7 @@ describe('Future static methods', () => {
             const future = Future.of(Promise.reject(error));
             
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Test error/);
+            await assert.rejects(future, /Test error/);
         });
 
         it('should catch thrown error from function', async () => {
@@ -42,7 +42,7 @@ describe('Future static methods', () => {
             const future = Future.of(() => { throw error; });
             
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Test error/);
+            await assert.rejects(future, /Test error/);
         });
 
         it('should apply errorTransformer', async () => {
@@ -52,24 +52,24 @@ describe('Future static methods', () => {
             );
             
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Transformed: Original/);
+            await assert.rejects(future, /Transformed: Original/);
         });
     });
 
     describe('Resolve', () => {
         it('should create successful Future with value', async () => {
             const future = Resolve(42);
-            assert.strictEqual(await future.unwrap(), 42);
+            assert.strictEqual(await future, 42);
         });
 
         it('should create successful Future with Promise', async () => {
             const future = Resolve(Promise.resolve(42));
-            assert.strictEqual(await future.unwrap(), 42);
+            assert.strictEqual(await future, 42);
         });
 
         it('should create void Future without arguments', async () => {
             const future = Resolve();
-            assert.strictEqual(await future.unwrap(), undefined);
+            assert.strictEqual(await future, undefined);
         });
     });
 
@@ -79,7 +79,7 @@ describe('Future static methods', () => {
             const future = Reject(error);
             
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Test error/);
+            await assert.rejects(future, /Test error/);
         });
 
         it('should create failed Future with Promise error', async () => {
@@ -87,14 +87,14 @@ describe('Future static methods', () => {
             const future = Reject(Promise.resolve(error));
             
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Test error/);
+            await assert.rejects(future, /Test error/);
         });
     });
 
     describe('Future.Begin', () => {
         it('should create void Future', async () => {
             const future = Begin();
-            assert.strictEqual(await future.unwrap(), undefined);
+            assert.strictEqual(await future, undefined);
             assert.strictEqual(await future.isOk(), true);
         });
 
@@ -102,7 +102,7 @@ describe('Future static methods', () => {
             const result = await Begin()
                 .andThen(() => Future.of(1))
                 .andThen(x => Future.of(x + 2))
-                .unwrap();
+                ;
             
             assert.strictEqual(result, 3);
         });
@@ -116,7 +116,7 @@ describe('Future static methods', () => {
                 Future.of(3)
             ];
             
-            const result = await Future.all(futures).unwrap();
+            const result = await Future.all(futures);
             assert.deepStrictEqual(result, [1, 2, 3]);
         });
 
@@ -130,11 +130,11 @@ describe('Future static methods', () => {
             
             const future = Future.all(futures);
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Failed/);
+            await assert.rejects(future, /Failed/);
         });
 
         it('should work with empty array', async () => {
-            const result = await Future.all([]).unwrap();
+            const result = await Future.all([]);
             assert.deepStrictEqual(result, []);
         });
 
@@ -147,7 +147,7 @@ describe('Future static methods', () => {
             const futures = [Future.of(Promise.reject(error))];
             
             const future = Future.all(futures);
-            await assert.rejects(future.unwrap(), (err: CustomError) => {
+            await assert.rejects(future, (err: CustomError) => {
                 assert.strictEqual(err.name, 'CustomError');
                 return true;
             });
@@ -162,7 +162,7 @@ describe('Future static methods', () => {
                 Future.of(100)
             ];
             
-            const result = await Future.any(futures).unwrap();
+            const result = await Future.any(futures);
             assert.strictEqual(result, 42);
         });
 
@@ -175,7 +175,7 @@ describe('Future static methods', () => {
             const future = Future.any(futures);
             
             try {
-                await future.unwrap();
+                await future;
                 assert.fail('Expected to reject');
             } catch (err: any) {
                 assert.strictEqual(err.name, 'AggregateError');
@@ -198,7 +198,7 @@ describe('Future static methods', () => {
                 Future.of(fast)
             ]);
             
-            assert.strictEqual(await future.unwrap(), 42);
+            assert.strictEqual(await future, 42);
         });
 
         it('should reject with fastest error', async () => {
@@ -211,7 +211,7 @@ describe('Future static methods', () => {
             ]);
             
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Fast error/);
+            await assert.rejects(future, /Fast error/);
         });
     });
 
@@ -222,7 +222,7 @@ describe('Future static methods', () => {
                 Future.of(2).map(x => x * 3),
             ];
             
-            const result = await Future.all(futures).unwrap();
+            const result = await Future.all(futures);
             assert.deepStrictEqual(result, [2, 6]);
         });
 
@@ -232,7 +232,7 @@ describe('Future static methods', () => {
                 Future.of(42)
             ];
             
-            const result = await Future.any(futures).unwrap();
+            const result = await Future.any(futures);
             assert.strictEqual(result, 42);
         });
     });
@@ -240,7 +240,7 @@ describe('Future static methods', () => {
     describe('Begin', () => {
         it('should create void Future', async () => {
             const future = Begin();
-            assert.strictEqual(await future.unwrap(), undefined);
+            assert.strictEqual(await future, undefined);
         });
 
         it('should support type parameters for errors', async () => {
@@ -259,7 +259,7 @@ describe('Future static methods', () => {
             const result = await Begin()
                 .andThen(() => Resolve(1))
                 .andThen(x => Resolve(x + 2))
-                .unwrap();
+                ;
             
             assert.strictEqual(result, 3);
         });
@@ -271,7 +271,7 @@ describe('Future static methods', () => {
                 a: Resolve(1),
                 b: Resolve(2),
                 c: Resolve(3)
-            }).unwrap();
+            });
             
             assert.deepStrictEqual(result, { a: 1, b: 2, c: 3 });
         });
@@ -284,7 +284,7 @@ describe('Future static methods', () => {
             });
             
             assert.strictEqual(await bind.isErr(), true);
-            await assert.rejects(bind.unwrap(), /b failed/);
+            await assert.rejects(bind, /b failed/);
         });
 
         it('should handle empty object', async () => {
@@ -374,7 +374,7 @@ describe('Future static methods', () => {
             .bind({
                 sum: (ctx) => Resolve(ctx.doubled + ctx.tripled)
             })
-            .unwrap();
+            ;
             
             assert.strictEqual(result.sum, 500); // (200 + 300)
         });
@@ -393,7 +393,7 @@ describe('Future static methods', () => {
                 .finally(() => { cleanupCalled = true; });
             
             assert.strictEqual(await future.isErr(), true);
-            await assert.rejects(future.unwrap(), /Bind failed/);
+            await assert.rejects(future, /Bind failed/);
             assert.strictEqual(cleanupCalled, true);
         });
     });
@@ -404,7 +404,7 @@ describe('Future static methods', () => {
                 a: 1,
                 b: 'hello',
                 c: true
-            }).unwrap()
+            })
 
             assert.deepStrictEqual(result, { a: 1, b: 'hello', c: true })
         })
@@ -414,7 +414,7 @@ describe('Future static methods', () => {
                 a: Resolve(1),
                 b: 'hello',
                 c: Resolve(true)
-            }).unwrap()
+            })
 
             assert.deepStrictEqual(result, { a: 1, b: 'hello', c: true })
         })
@@ -427,7 +427,7 @@ describe('Future static methods', () => {
                 .bind({
                     doubled: ({ multiplier }) => multiplier * 2
                 })
-                .unwrap()
+                
 
             assert.deepStrictEqual(result, { multiplier: 5, doubled: 10 })
         })
@@ -485,7 +485,7 @@ describe('Future static methods', () => {
     describe('edge cases', () => {
         it('should handle empty bind', async () => {
             const future = Resolve({ a: 1 })
-            const result = await future.bind({}).unwrap()
+            const result = await future.bind({})
             assert.deepStrictEqual(result, { a: 1 })
         })
 
@@ -535,7 +535,7 @@ describe('Future static methods', () => {
                 })
 
             assert.strictEqual(await future.isErr(), true)
-            await assert.rejects(future.unwrap(), /Failed/)
+            await assert.rejects(future, /Failed/)
         })
 
         it('should not execute subsequent binds after error', async () => {
@@ -556,3 +556,232 @@ describe('Future static methods', () => {
         })
     })
 });
+
+
+describe('Future.prototype.recover', () => {
+    it('should convert error to success value', async () => {
+        const future = Reject(new Error('fail'))
+            .recover(42)
+        
+        assert.strictEqual(await future, 42)
+        assert.strictEqual(await future.isOk(), true)
+    })
+
+    it('should pass through success value unchanged', async () => {
+        const future = Resolve(10)
+            .recover(42)
+        
+        assert.strictEqual(await future, 10)
+    })
+
+    it('should support async handler', async () => {
+        const future = Reject(new Error('fail'))
+            .recover(async (err) => {
+                await Promise.resolve()
+                return `recovered: ${err.message}`
+            })
+        
+        assert.strictEqual(await future, 'recovered: fail')
+    })
+
+    it('should make error type never after recover', async () => {
+        const future = Reject(new Error('fail'))
+            .recover('default')
+        
+        assert.strictEqual(await future.isErr(), false)
+        assert.strictEqual(await future.unwrapOr('fallback'), 'default')
+    })
+
+    it('should handle success value union type', async () => {
+        const future: Future<number, Error> = Reject(new Error('fail'))
+        const recovered = future.recover('string')
+        
+        const value = await recovered
+        assert.strictEqual(value, 'string')
+    })
+
+    it('should handle thrown errors in handler', async () => {
+        const future = Reject(new Error('original'))
+            .recover(() => {
+                throw new Error('handler failed')
+            })
+        
+        await assert.rejects(future, /handler failed/)
+    })
+
+    it('should work with multiple recovers in chain', async () => {
+        const future = Reject(new Error('fail'))
+            .recover('first')
+            .recover('second')
+        
+        assert.strictEqual(await future, 'first')
+    })
+})
+
+describe('Future.prototype.recoverIf', () => {
+    it('should recover matching error', async () => {
+        const error = { status: 404, message: 'Not Found' }
+        const future = Reject(error)
+            .recoverIf(
+                err => err.status === 404,
+                null
+            )
+        
+        assert.strictEqual(await future, null)
+        assert.strictEqual(await future.isOk(), true)
+    })
+
+    it('should pass through non-matching error', async () => {
+        const error = { status: 500, message: 'Server Error' }
+        const future = Reject(error)
+            .recoverIf(
+                err => err.status === 404,
+                null
+            )
+            .mapErr(err => new Error(err.message))
+        
+        assert.strictEqual(await future.isErr(), true)
+        await assert.rejects(future, /Server Error/)
+    })
+
+    it('should pass through success value', async () => {
+        const future = Resolve(42)
+            .recoverIf(
+                err => true,
+                0
+            )
+        
+        assert.strictEqual(await future, 42)
+    })
+
+    it('should support async handler', async () => {
+        const error = { status: 429, retryAfter: 60 }
+        const future = Reject(error)
+            .recoverIf(
+                err => err.status === 429,
+                async (err) => {
+                    await Promise.resolve()
+                    return { retryAfter: err.retryAfter }
+                }
+            )
+        
+        const result = await future
+        assert.deepStrictEqual(result, { retryAfter: 60 })
+    })
+
+    it('should handle union success type', async () => {
+        const error = { status: 404 }
+        const future: Future<string, { status: number }> = Reject(error)
+        const recovered = future.recoverIf(
+            err => err.status === 404,
+            0
+        )
+        
+        const value = await recovered
+        assert.strictEqual(value, 0)
+    })
+
+    it('should chain multiple recoverIf calls', async () => {
+        const error = { status: 403, message: 'Forbidden' }
+        const future = Reject(error)
+            .recoverIf(
+                err => err.status === 404,
+                'not found'
+            )
+            .recoverIf(
+                err => err.status === 403,
+                'forbidden'
+            )
+        
+        assert.strictEqual(await future, 'forbidden')
+    })
+
+    it('should only recover first matching predicate in chain', async () => {
+        const future = Reject(new Error('fail'))
+            .recoverIf(
+                () => true,
+                'first match'
+            )
+            .recoverIf(
+                () => true,
+                'second match'
+            )
+        
+        assert.strictEqual(await future, 'first match')
+    })
+
+    it('should pass through when no predicate matches', async () => {
+        const error = { status: 500, message: 'Server Error' }
+        const future = Reject(error)
+            .recoverIf(err => err.status === 404, 'not found')
+            .recoverIf(err => err.status === 403, 'forbidden')
+            .mapErr(err => new Error(err.message))
+        
+        assert.strictEqual(await future.isErr(), true)
+        await assert.rejects(future, /Server Error/)
+    })
+
+    it('should preserve error type through chain', async () => {
+        class ApiError extends Error {
+            constructor(public status: number) { super() }
+        }
+        
+        const error = new ApiError(500)
+        const future: Future<never, ApiError> = Reject(error)
+        const recovered = future.recoverIf(
+            err => err.status === 404,
+            'not found'
+        )
+        
+        await assert.rejects(recovered, (err: ApiError) => {
+            assert.strictEqual(err instanceof ApiError, true)
+            assert.strictEqual(err.status, 500)
+            return true
+        })
+    })
+
+    it('should handle thrown errors in handler', async () => {
+        const future = Reject(new Error('original'))
+            .recoverIf(
+                () => true,
+                () => { throw new Error('handler failed') }
+            )
+        
+        await assert.rejects(future, /handler failed/)
+    })
+
+    it('should handle thrown errors in predicate', async () => {
+        const future = Reject(new Error('original'))
+            .recoverIf(
+                () => { throw new Error('predicate failed') },
+                'value'
+            )
+        
+        await assert.rejects(future, /predicate failed/)
+    })
+
+    it('should work with real-world 404 scenario', async () => {
+        const api = {
+            getUser: (id: number): Future<{id: number, name: string}, {status: number, message: string}> => 
+                id === 0 
+                    ? Reject({ status: 404, message: 'User not found' })
+                    : Resolve({ id, name: 'Alice' })
+        }
+        
+        const user = api.getUser(0)
+            .recoverIf(
+                err => err.status === 404,
+                null
+            )
+        
+        assert.strictEqual(await user, null)
+        
+        const existingUser = api.getUser(1)
+            .recoverIf(
+                err => err.status === 404,
+                null
+            )
+        
+        assert.deepStrictEqual(await existingUser, { id: 1, name: 'Alice' })
+    })
+})
