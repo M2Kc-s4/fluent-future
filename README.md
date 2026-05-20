@@ -1,7 +1,16 @@
 
 # fluent-future
 
->> Type-safe async operations with functional composition. Like `Promise` but with typed errors and monadic methods.
+[![npm version](https://badge.fury.io/js/fluent-future.svg)](https://www.npmjs.com/package/fluent-future)
+
+Type-safe async operations with functional composition. Like `Promise` but with typed errors and monadic methods.
+
+
+## Installation
+
+```bash
+npm install fluent-future
+```
 
 
 ## Problem ❌
@@ -60,14 +69,6 @@ const dashboard = await Bind({
 ---
 
 
-## Installation
-
-```bash
-npm install fluent-future
-```
-
-
-
 ## Quick Start
 
 ```ts
@@ -88,6 +89,63 @@ const result = await Begin<ApiError>()
   .tap(user => console.log(user))
   .recoverIf(err => err.status === 404, null)
 ```
+
+---
+
+## Adopt Gradually
+
+`Future` is 100% Promise-compatible. Start using it as a drop-in replacement for `Promise`, and tap into advanced features only when you need them.
+
+### Step 1: Drop-in Replacement
+
+```ts
+// Before: native Promise
+async function getUser(id: number) {
+  const response = await fetch(`/api/users/${id}`)
+  return response.json()
+}
+
+// After: just wrap with Future.of — everything still works
+function getUser(id: number) {
+  return Future.of(fetch(`/api/users/${id}`).then(r => r.json()))
+}
+
+// await works exactly the same
+const user = await getUser(1)
+```
+
+### Step 2: Use What You Need
+
+You don't have to learn the entire API upfront. Reach for methods as your error handling grows:
+
+```ts
+// Day 1: just await it
+const user = await getUser(1)
+
+// Day 5: add a fallback
+const user = await getUser(1).recover(null)
+
+// Day 10: handle specific errors
+const user = await getUser(1)
+  .recoverIf(err => err.status === 404, null)
+  .recoverIf(err => err.status === 403, { banned: true })
+
+// Day 30: full composition with parallel loading
+const dashboard = await Bind({
+  user: getUser(1),
+  config: getConfig().recover(defaultConfig)
+})
+.bind({
+  posts: ({ user }) => getPosts(user.id).recover([])
+})
+```
+
+### Why This Matters
+
+- **No lock-in**: wrap existing Promise-returning functions, don't rewrite them
+- **No big refactor**: one endpoint at a time, no flag day
+- **No learning cliff**: your team keeps using `await` as usual, learns `recover` later
+- **No breaking changes**: `Future` is a `Promise` — drop it into any `Promise.all` or `await` expression
 
 ---
 
