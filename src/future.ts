@@ -24,7 +24,7 @@ export type FutureType<T, E = Error> = ResolveType<T> | RejectType<E>
  * ```
  */
 export class Future<T, E = Error> {
-    readonly [Symbol.toStringTag] = 'Future'
+    get [Symbol.toStringTag]() {return 'Future'}
     
     constructor(private readonly promise: Promise<FutureType<T, E>>) {}
 
@@ -39,9 +39,8 @@ export class Future<T, E = Error> {
      * console.log(await future.isOk()) // true
      * ```
      */
-    async isOk(): Promise<boolean> {
-        const res = await this.promise
-        return res.ok
+    isOk() {
+        return this.promise.then(res => res.ok)
     }
 
 
@@ -56,9 +55,8 @@ export class Future<T, E = Error> {
      * console.log(await future.isErr()) // true
      * ```
      */
-    async isErr(): Promise<boolean> {
-        const res = await this.promise
-        return !res.ok
+    isErr() {
+        return this.promise.then(r => !r.ok)
     }
 
 
@@ -73,13 +71,14 @@ export class Future<T, E = Error> {
      * const value = await Resolve(69).unwrap() // 69
      * ```
      */
-    async unwrap(): Promise<T> {
-        const res = await this.promise
-        if (!res.ok) {
-            throw res.error
-        }
+    unwrap() {
+        return this.promise.then(r => {
+            if (r.ok) {
+                return r.value
+            }
 
-        return res.value
+            throw r.error
+        })
     }
 
 
@@ -94,9 +93,8 @@ export class Future<T, E = Error> {
      * const value = await Reject(new Error()).unwrapOr(0) // 0
      * ```
      */
-    async unwrapOr(defaultValue: T): Promise<T> {
-        const res = await this.promise
-        return res.ok ? res.value : defaultValue
+    unwrapOr(defaultValue: T) {
+        return this.promise.then(r => r.ok ? r.value : defaultValue)
     }
 
 
@@ -112,9 +110,8 @@ export class Future<T, E = Error> {
      *   .unwrapOrElse(err => err.message.length) // 3
      * ```
      */
-    async unwrapOrElse(fn: (error: E) => T): Promise<T> {
-        const res = await this.promise
-        return res.ok ? res.value : fn(res.error)
+    unwrapOrElse(fn: (error: E) => T) {
+        return this.promise.then(r => r.ok ? r.value : fn(r.error))
     }
 
 
@@ -130,12 +127,19 @@ export class Future<T, E = Error> {
      * await Reject(new Error('fail')).expect('Failed to load user')
      * ```
      */
-    async expect(message: string): Promise<T> {
-        const res = await this.promise
-        if (!res.ok) {
-            throw new Error(`${message}: ${res.error}`)
-        }
-        return res.value
+    expect(message: string) {
+        return this.promise.then(r => {
+            if (!r.ok) {
+                throw new Error(`${message}: ${r.error}`)
+            }
+
+            return r.value
+        })
+    }
+
+    
+    inspect(): Future<T, E> {
+        return this.tap(console.log).tapErr(console.error)
     }
 
 
@@ -151,10 +155,9 @@ export class Future<T, E = Error> {
      *    // 10
      */
     map<U>(fn: (value: T) => U) {
-        const newPromise = this.promise.then(res => 
-            res.ok ? { ok: true, value: fn(res.value) } as const : res
+        return new Future(
+            this.promise.then(r => r.ok ? {ok: true, value: fn(r.value)} : r)
         )
-        return new Future(newPromise)
     }
 
 
@@ -170,11 +173,12 @@ export class Future<T, E = Error> {
      *   .mapErr(err => new ApiError(err.message))
      * ```
      */
-    mapErr<U>(fn: (value: E) => U): Future<T, U> {
-        const newPromise = this.promise.then(res => 
-            !res.ok ? { ok: false, error: fn(res.error) } as const : res
+    mapErr<U>(fn: (value: E) => U) {
+        return new Future(
+            this.promise.then(res => 
+                res.ok ? res : { ok: false, error: fn(res.error) }
+            )
         )
-        return new Future(newPromise)
     }
 
 
@@ -190,13 +194,10 @@ export class Future<T, E = Error> {
      *   .andThen(x => Future.of(x * 2))
      *    // 10
      */
-    andThen<U>(fn: (value: T) => Future<U, E>): Future<U, E> {
-        const newPromise = this.promise.then(async res => {
-            if (!res.ok) return res
-            const next = fn(res.value)
-            return next.promise
-        })
-        return new Future(newPromise)
+    andThen<U>(fn: (value: T) => Future<U, E>) {
+        return new Future(
+            this.promise.then(r => r.ok ? fn(r.value).promise : r)
+        )
     }
 
 
@@ -214,12 +215,9 @@ export class Future<T, E = Error> {
      * ```
      */
     orElse<F>(fn: (error: E) => Future<T, F>): Future<T, F> {
-        const newPromise = this.promise.then(async res => {
-            if (res.ok) return res
-            const next = fn(res.error)
-            return next.promise
-        })
-        return new Future(newPromise)
+        return new Future(
+            this.promise.then(r => r.ok ? r : fn(r.error).promise)
+        )
     }
 
 
@@ -237,11 +235,13 @@ export class Future<T, E = Error> {
      * ```
      */
     tap(fn: (value: T) => any): Future<T, E> {
-        return new Future(this.promise.then(async res => {
-            if (res.ok) await fn(res.value)
-            
-            return res
-        }))
+        return new Future(
+            this.promise.then(async res => {
+                if (res.ok) await fn(res.value)
+                
+                return res
+            })
+        )
     }
 
 
@@ -259,11 +259,13 @@ export class Future<T, E = Error> {
      * ```
      */
     tapErr(fn: (error: E) => any): Future<T, E> {
-        return new Future(this.promise.then(async res => {
-            if (!res.ok) await fn(res.error)
-            
-            return res
-        }))
+        return new Future(
+            this.promise.then(async res => {
+                if (!res.ok) await fn(res.error)
+                
+                return res
+            })
+        )
     }
 
 
@@ -284,10 +286,8 @@ export class Future<T, E = Error> {
     async match<R>(patterns: {
         ok: (value: T) => R
         err: (error: E) => R
-    }): Promise<R> {
-        const res = await this.promise
-        if (res.ok) return patterns.ok(res.value)
-        return patterns.err(res.error)
+    }) {
+        return this.promise.then(r => r.ok ? patterns.ok(r.value) : patterns.err(r.error))
     }
 
 
@@ -348,17 +348,22 @@ export class Future<T, E = Error> {
         predicate: (value: T) => boolean,
         handlerOrError: F | ((value: T) => F | Promise<F>)
     ): Future<T, E | F> {
-        const newPromise = this.promise.then(async res => {
-            if (!res.ok) return res
-            if (predicate(res.value)) {
-                const error = typeof handlerOrError === 'function'
-                    ? await (handlerOrError as Function)(res.value)
-                    : handlerOrError
-                return { ok: false, error } as FutureType<never, F | E>
-            }
-            return res
-        })
-        return new Future(newPromise)
+        return new Future(
+            this.promise.then(r => {
+                if (!r.ok) return r
+
+                if (predicate(r.value)) {
+                    return { 
+                        ok: false,
+                        error: typeof handlerOrError === 'function'
+                            ? (handlerOrError as Function)(r.value)
+                            : handlerOrError
+                    }
+                }
+
+                return r
+            })
+        )
     }
 
 
@@ -381,14 +386,18 @@ export class Future<T, E = Error> {
     throw<F>(handler: (value: T) => F | Promise<F>): Future<never, E | F>
     throw<F>(error: F): Future<never, E | F>
     throw<F>(handlerOrError: F | ((value: T) => F | Promise<F>)): Future<never, E | F> {
-        const newPromise = this.promise.then(async res => {
-            if (!res.ok) return res
-            const error = typeof handlerOrError === 'function'
-                ? await (handlerOrError as Function)(res.value)
-                : handlerOrError
-            return { ok: false, error } as FutureType<never, F | E>
-        })
-        return new Future(newPromise)
+        return new Future(
+            this.promise.then(res => {
+                if (!res.ok) return res
+
+                return {
+                    ok: false,
+                    error: typeof handlerOrError === 'function'
+                    ? (handlerOrError as Function)(res.value)
+                    : handlerOrError
+                }
+            })
+        )
     }
 
 
@@ -431,16 +440,20 @@ export class Future<T, E = Error> {
      */
     recover<U>(handler: (error: E) => U | Promise<U>): Future<T | U, never>
     recover<U>(value: U): Future<T | U, never>
-    recover<U>(handlerOrValue: U | ((error: E) => U | Promise<U>)): Future<T | U, never> {
-        const newPromise = this.promise.then(async res => {
-            if (res.ok) return res
-            const value = typeof handlerOrValue === 'function' 
-                ? await (handlerOrValue as Function)(res.error)
-                : handlerOrValue
-            return { ok: true, value } as FutureType<T | U, never>
-        })
-        return new Future(newPromise)
-}
+    recover<U>(handlerOrValue: U | ((error: E) => U | Promise<U>)) {
+        return new Future(
+            this.promise.then(res => {
+                if (res.ok) return res
+
+                return {
+                    ok: true,
+                    value:  typeof handlerOrValue === 'function' 
+                        ? (handlerOrValue as Function)(res.error)
+                        : handlerOrValue
+                }
+            })
+        )
+    }
 
 
     /**
@@ -491,17 +504,21 @@ export class Future<T, E = Error> {
         predicate: (error: E) => boolean,
         handlerOrValue: U | ((error: E) => U | Promise<U>)
     ): Future<T | U, E> {
-        const newPromise = this.promise.then(async res => {
-            if (res.ok) return res
-            if (predicate(res.error)) {
-                const value = typeof handlerOrValue === 'function'
-                    ? await (handlerOrValue as Function)(res.error)
-                    : handlerOrValue
-                return { ok: true, value } as FutureType<T | U, never>
-            }
-            return res
-        })
-        return new Future(newPromise)
+        return new Future(
+            this.promise.then(async res => {
+                if (res.ok) return res
+
+                if (predicate(res.error)) {
+                    return {
+                        ok: true,
+                        value: typeof handlerOrValue === 'function'
+                            ? (handlerOrValue as Function)(res.error)
+                            : handlerOrValue
+                    }
+                }
+                return res
+            })
+        )
     }
 
 
@@ -575,22 +592,25 @@ export class Future<T, E = Error> {
     static of<T, E = Error>(value: T): Future<T, E>
     static of<T, E = Error>(fn: () => T, errorTransformer?: (error: Error) => E): Future<T, E>
     static of<T, E = Error>(
-        input: any,
+        input: T | PromiseLike<T> | (() => T | PromiseLike<T>),
         errorTransformer?: (error: Error) => E
     ): Future<T, E> {
-        const promise = (async () => {
-            if (typeof input === 'function') return await (input as any)()
-            return await input
-        })()
-
-        const FuturePromise = promise
-            .then(value => ({ ok: true, value } as const))
-            .catch(error => ({ 
-                ok: false, 
-                error: errorTransformer ? errorTransformer(error) : error as E
-            } as const))
-        
-        return new Future(FuturePromise)
+        return new Future(
+            Promise
+                .resolve()
+                .then(() =>
+                    typeof input === 'function'
+                        ? (input as () => T | PromiseLike<T>)()
+                        : input
+                )
+                .then(value => ({ ok: true as const, value }))
+                .catch(error => ({
+                    ok: false as const,
+                    error: errorTransformer
+                        ? errorTransformer(error)
+                        : error as E
+                }))
+        )
     }
 
 
@@ -606,10 +626,7 @@ export class Future<T, E = Error> {
      * ```
      */
     static all<T, E>(futures: Future<T, E>[]): Future<T[], E> {
-        return Begin<E>()
-            .andThen(() => {
-                return Future.of(Promise.all(futures))
-            })
+        return Future.of(Promise.all(futures))
     }
 
 
@@ -625,11 +642,7 @@ export class Future<T, E = Error> {
      * ```
      */
     static any<T, E>(futures: NoInfer<Future<T, E>>[]): Future<T, E> {
-        return Begin<E>()
-            .andThen(() => {
-                const promises = futures.map(f => f)
-                return Future.of(Promise.any(promises))
-            })
+        return Future.of(Promise.any(futures.map(f => f)))
     }
 
 
@@ -645,16 +658,67 @@ export class Future<T, E = Error> {
      * ```
      */
     static race<T, E>(futures: Future<T, E>[]): Future<T, E> {
-        return Begin<E>()
-            .andThen(() => {
-                const promises = futures.map(f => f)
-                return Future.of(Promise.race(promises))
-            })
+        return Future.of(Promise.race(futures.map(f => f)))
     }    
 
-    static isFuture(obj: any): obj is Future<any, any> {
-        return obj && obj.__isFuture === true;
+
+    /**
+     * Creates a new {@link Future} together with its associated resolver functions.
+     *
+     * Unlike {@link Promise.withResolvers}, calling {@link reject} does not reject
+     * the underlying promise. Instead, it completes the {@link Future} with a typed
+     * error (`Err`), preserving the `Future<T, E>` semantics.
+     *
+     * This method is useful when a `Future` needs to be resolved or rejected from
+     * outside its executor.
+     *
+     * @template T The success value type.
+     * @template E The error value type.
+     * @returns An object containing the created {@link Future} and its resolver functions.
+     *
+     * @example
+     * ```ts
+     * const { future, resolve } = Future.withResolvers<number>();
+     *
+     * setTimeout(() => resolve(42), 1000);
+     *
+     * console.log(await future.unwrap()); // 42
+     * ```
+     *
+     * @example
+     * ```ts
+     * const { future, reject } = Future.withResolvers<number, Error>();
+     *
+     * reject(new Error("Something went wrong"));
+     *
+     * if (await future.isErr()) {
+     *     console.error(await future.unwrapErr());
+     * }
+     * ```
+     */ 
+    static withResolvers<T, E = Error>() {
+        let resolve!: (value: T) => void
+        let reject!: (error: E) => void
+
+        const future = new Future<T, E>(
+            new Promise<FutureType<T, E>>(res => {
+                resolve = value => res({ ok: true, value })
+                reject = error => res({ ok: false, error })
+            })
+        )
+
+        return {
+            future,
+            resolve,
+            reject
+        }
     }
+
+
+    static isFuture(obj: any): obj is Future<any, any> {
+        return obj && obj instanceof Future && obj[Symbol.toStringTag] === 'Future'
+    }
+
 
     /**
      * Executes a finalizer regardless of success or failure.
@@ -670,9 +734,10 @@ export class Future<T, E = Error> {
      * ```
      */
     finally(fn: () => any | Promise<any>): Future<T, E> {
-        return new Future(this.promise.then(async res => {
-            await fn()
-            return res
+        return new Future(
+            this.promise.then(async res => {
+                await fn()
+                return res
         }))
     }
 }
@@ -750,19 +815,19 @@ export const Begin = <E = Error>(): Future<void, E> => {
  * // data: { user: User, posts: Post[], extra: number }
  * ```
  */
-export const Bind = <T extends Record<string, any>, E = Error>(
-    fields: { [K in keyof T]: T[K] | Future<T[K], E> }
-): Future<T, E> => {
-    const keys = Object.keys(fields) as (keyof T)[]
+export const Bind = <F extends Record<string, any>>(fields: F): Future<
+    { [K in keyof F]: F[K] extends Future<infer V, any> ? V : F[K] }, 
+    { [K in keyof F]: F[K] extends Future<any, infer E> ? E : never }[keyof F]
+> => {  
+    const keys = Object.keys(fields)
     const futures = keys.map(k => {
         const field = fields[k]
-        if (field instanceof Future) return field as Future<T[keyof T], E>
-        return Resolve(field) as Future<T[keyof T], E>
+        return Future.isFuture(field) ? field : Resolve(field)
     })
-    
+
     return Future.all(futures).map(values => {
-        const result = {} as T
+        const result = {} as any
         keys.forEach((k, i) => result[k] = values[i])
         return result
-    })
+    }) as any
 }
