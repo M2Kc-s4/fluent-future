@@ -44,13 +44,12 @@ async function loadDashboard(): Promise<Dashboard | null> {
 ```ts
 // Future: error type preserved, composition without nesting
 const dashboard = await Bind({
-  user: api.getUser(),
-  config: api.getConfig().recover(defaultConfig)
+    user: api.getUser(),
+    config: api.getConfig().recover(defaultConfig)
 })
 .bind({
-  posts: ({ user }) => api.getPosts(user.id).recover([])
+    posts: ({ user }) => api.getPosts(user.id).recover([])
 })
-.tap(({ user }) => console.log(`Hello, ${user.name}`))
 .tapErr(err => console.log(err))
 .recover(null)
 // Future<Dashboard | null, never>
@@ -72,13 +71,13 @@ const dashboard = await Bind({
 ## Quick Start
 
 ```ts
-import { Future, Resolve, Reject, Bind, Begin } from 'fluent-future'
+import { Future, Ok, Err, Bind, Begin } from 'fluent-future'
 
 // Success
-const a = Resolve(42)
+const a = Ok(42)
 
 // Failure
-const b = Reject(new ApiError(400, 'Bad Request'))
+const b = Err(new ApiError(400, 'Bad Request'))
 
 // From a Promise or function
 const c = Future.of(() => JSON.parse('{"x":1}'))
@@ -149,6 +148,20 @@ const dashboard = await Bind({
 
 ---
 
+## Comparison
+
+| | Future | Native Promise |
+|---|---|---|
+| Typed errors | ✅ `Future<T, E>` | ❌ `Promise<T>` (err: unknown) |
+| Parallel composition | ✅ `Bind` / `.bind` | ⚠️ `Promise.all` + manual destructure | 
+| Error recovery | ✅ `recover` / `recoverIf` | ⚠️ `.catch()` | 
+| Success → error | ✅ `throw` / `throwIf` | ❌ manual throw |
+| Side effects | ✅ `tap` / `tapErr` / `finally` | ⚠️ manual | 
+| Pattern matching | ✅ `match` | ❌ |
+| await compatible | ✅ native `await` | ✅ native |
+
+---
+
 
 ## Core Concepts
 
@@ -199,11 +212,11 @@ const result = await api.getUser()
 
 ```ts
 // await works natively
-const value = await Resolve(42)  // 42
+const value = await Ok(42)  // 42
 
 // then / catch work too
-Resolve(42).then(v => console.log(v))
-Reject(err).catch(e => console.error(e))
+Ok(42).then(v => console.log(v))
+Err(err).catch(e => console.error(e))
 ```
 
 ---
@@ -213,12 +226,12 @@ Reject(err).catch(e => console.error(e))
 ### Creation
 
 ```ts
-Resolve(42)                     // Future<number>
-Resolve()                       // Future<void>
-Reject(new ApiError(400))       // Future<never, ApiError>
-Future.of(() => JSON.parse(str))          // from function
-Future.of(somePromise, err => new ApiError(err)) // with error transform
-Begin<ApiError>()               // start a chain with void, error type ApiError
+Ok(42)                     // Future<number, never>
+Ok()                       // Future<void, never>
+Err(new ApiError(400))  // Future<never, ApiError>
+Future.of(() => JSON.parse(str)) // Future<any, unknown>
+Future.of(somePromise, err => new ApiError(err)) // Future<Promise<Some>, ApiError>
+Begin<ApiError>()               // Future<void, ApiError>
 ```
 
 ### Context Composition
@@ -302,25 +315,6 @@ Future.isFuture(obj)      // type guard
 
 ## Real-World Examples
 
-### Dashboard Load
-
-```ts
-const dashboard = await Bind({
-  user: api.getUser(),
-  config: api.getConfig().recover(defaultConfig),
-  announcements: api.getAnnouncements().recover([])
-})
-.bind({
-  posts: ({ user }) => api.getPosts(user.id).recover([]),
-  notifications: ({ user }) => api.getNotifications(user.id).recover([])
-})
-.bind({
-  feed: ({ posts, announcements }) => [...posts, ...announcements]
-})
-.tap(({ user }) => analytics.track('dashboard_loaded', { userId: user.id }))
-// Future<Dashboard, ApiError>
-```
-
 ### Form with Dependent Lookups
 
 ```ts
@@ -352,21 +346,8 @@ const data = await api.getPrimary()
   .orElse(() => api.getCached())
   .recover(defaultValue)
 // Tries primary → secondary → cached → default
-// Never fails — Future<T, never>
 ```
 
 ---
 
-## Comparison
 
-| | Future | Native Promise |
-|---|---|---|
-| Typed errors | ✅ `Future<T, E>` | ❌ `Promise<T>` (err: unknown) |
-| Parallel composition | ✅ `Bind` / `.bind` | ⚠️ `Promise.all` + manual destructure | 
-| Error recovery | ✅ `recover` / `recoverIf` | ⚠️ `.catch()` | 
-| Success → error | ✅ `throw` / `throwIf` | ❌ manual throw |
-| Side effects | ✅ `tap` / `tapErr` / `finally` | ⚠️ manual | 
-| Pattern matching | ✅ `match` | ❌ |
-| await compatible | ✅ native `await` | ✅ native |
-
----
