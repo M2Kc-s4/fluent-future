@@ -788,11 +788,11 @@ export class Future<T, E = unknown> extends Promise<T> {
      * const [user, posts] = await Future.all([api.getUser(), api.getPosts()])
      * ```
      */
-    static all<T extends readonly unknown[]>(
+    static all<T extends Future<any>[]>(
         values: T
     ): Future<
-        { -readonly [K in keyof T]: Awaited<T[K]> },
-        never
+        { [K in keyof T]: Awaited<T[K]> },
+        T[number] extends Future<any, infer E> ? E : never
     > {
         return Future.fromPromise(
             Promise.all(values)
@@ -811,9 +811,12 @@ export class Future<T, E = unknown> extends Promise<T> {
      * const result = await Future.race([slow(), fast()])
      * ```
      */
-    static race<T extends readonly unknown[]>(
+    static race<T extends Future<any>[]>(
         values: T
-    ): Future<Awaited<T[number]>, unknown> {
+    ): Future<
+        Awaited<T[number]>,
+        T[number] extends Future<any, infer E> ? E : never
+    > {
         return Future.fromPromise(
             Promise.race(values)
         ) as any
@@ -831,9 +834,12 @@ export class Future<T, E = unknown> extends Promise<T> {
      * const data = await Future.any([api.getCache(), api.getServer()])
      * ```
      */
-    static any<T extends readonly unknown[]>(
+    static any<T extends Future<any>[]>(
         values: T
-    ): Future<Awaited<T[number]>, unknown> {
+    ): Future<
+        Awaited<T[number]>, 
+        T[number] extends Future<any, infer E> ? E : never
+    > {
         return Future.fromPromise(
             Promise.any(values)
         ) as any
@@ -876,7 +882,7 @@ export class Future<T, E = unknown> extends Promise<T> {
      */ 
     static withResolvers<T, E = unknown>() {
         let resolve!: (
-            value: T | PromiseLike<T>
+            value: T
         ) => void
 
         let reject!: (error: E) => void

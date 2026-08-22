@@ -124,7 +124,7 @@ describe('Future static methods', () => {
             const error = new Error('Failed');
             const futures = [
                 Ok(1),
-                Future.of(Promise.reject(error)),
+                Future.reject(error),
                 Ok(3)
             ];
             
@@ -157,7 +157,7 @@ describe('Future static methods', () => {
     describe('Future.any', () => {
         it('should resolve first successful Future', async () => {
             const futures = [
-                Future.of(Promise.reject(new Error('Fail 1'))),
+                Future.reject(new Error('Fail 1')),
                 Ok(42),
                 Ok(100)
             ];
