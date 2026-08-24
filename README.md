@@ -1,35 +1,30 @@
-
 # fluent-future
 
 [![npm version](https://badge.fury.io/js/fluent-future.svg)](https://www.npmjs.com/package/fluent-future)
 
-Type-safe async operations with functional composition. Like `Promise` but with typed errors and monadic methods.
-
-
-## Installation
+`Future<T, E>` — a `Promise` subclass that carries its error type through the whole chain, and gives you the composition tools to actually use that.
 
 ```bash
 npm install fluent-future
 ```
 
-
-## Problem ❌
+## The problem
 
 ```ts
-// ❌ Native Promise: err is unknown, try/catch hell
+// ❌ err is unknown, and every branch needs its own try/catch
 async function loadDashboard(): Promise<Dashboard | null> {
     try {
         const user = await api.getUser()
-        
+
         let posts: Post[]
         try {
             posts = await api.getPosts(user.id)
         } catch {
             posts = []
         }
-        
+
         const config = await api.getConfig().catch(() => defaultConfig)
-        
+
         return { user, posts, config }
     } catch (err) {
         console.error(err)
@@ -38,11 +33,9 @@ async function loadDashboard(): Promise<Dashboard | null> {
 }
 ```
 
-
-## Solution ✅
+## The fix
 
 ```ts
-// Future: error type preserved, composition without nesting
 const dashboard = await Bind({
     user: api.getUser(),
     config: api.getConfig().recover(defaultConfig)
@@ -53,98 +46,72 @@ const dashboard = await Bind({
 .tapErr(err => console.log(err))
 .recover(null)
 // Future<Dashboard | null, never>
-
 ```
 
-
-**What happened:**
-- `Bind` run `getUser` and `getConfig` **in parallel**
-- `.bind` waited for `user`, then fetched `posts`
-- `.recover` handled errors where they occur — not in a global catch
-- `.recover(null)` handled all `api.get...` errors across the whole chain
-- `.tap` ran a side effect without breaking the chain
-- `ApiError` type passed through the entire chain
+`Bind` runs `getUser` and `getConfig` in parallel. `.bind` waits for `user`, then fetches `posts` alongside anything else in the same `.bind` call. Each `.recover` handles its own failure right where it happens instead of funneling everything into one catch block. `.tapErr` logs without breaking the chain. The final `.recover(null)` catches whatever's left — and because `recover` always succeeds, the error type collapses to `never`: the compiler knows this chain cannot throw.
 
 ---
 
-
-## Quick Start
+## Quick start
 
 ```ts
 import { Future, Ok, Err, Bind, Begin } from 'fluent-future'
 
-// Success
-const a = Ok(42)
+const a = Ok(42)                                    // Future<number, never>
+const b = Err(new ApiError(400, 'Bad Request'))      // Future<never, ApiError>
+const c = Future.of(() => JSON.parse('{"x":1}'))     // Future<any, unknown>
 
-// Failure
-const b = Err(new ApiError(400, 'Bad Request'))
-
-// From a Promise or function
-const c = Future.of(() => JSON.parse('{"x":1}'))
-
-// Composition
 const result = await Begin<ApiError>()
   .andThen(() => api.getUser())
   .tap(user => console.log(user))
   .recoverIf(err => err.status === 404, null)
 ```
 
----
+## Adopt it gradually
 
-## Adopt Gradually
+`Future` *is* a `Promise` — same constructor shape, same `.then`, same `await`. Nothing needs the vocabulary below on day one.
 
-`Future` is 100% Promise-compatible. Start using it as a drop-in replacement for `Promise`, and tap into advanced features only when you need them.
-
-### Step 1: Drop-in Replacement
+**Step 1 — drop-in replacement, nothing else changes:**
 
 ```ts
-// Before: native Promise
+// before
 async function getUser(id: number) {
   const response = await fetch(`/api/users/${id}`)
   return response.json()
 }
 
-// After: just wrap with Future.of — everything still works
+// after — wrap it, keep the call sites exactly as they were
 function getUser(id: number) {
   return Future.of(fetch(`/api/users/${id}`).then(r => r.json()))
 }
 
-// await works exactly the same
-const user = await getUser(1)
+const user = await getUser(1) // still just works
 ```
 
-### Step 2: Use What You Need
-
-You don't have to learn the entire API upfront. Reach for methods as your error handling grows:
+**Step 2 — reach for methods only when the error handling actually grows:**
 
 ```ts
-// Day 1: just await it
+// day 1
 const user = await getUser(1)
 
-// Day 5: add a fallback
+// day 5 — a fallback
 const user = await getUser(1).recover(null)
 
-// Day 10: handle specific errors
+// day 10 — handle specific errors, not all of them
 const user = await getUser(1)
   .recoverIf(err => err.status === 404, null)
   .recoverIf(err => err.status === 403, { banned: true })
 
-// Day 30: full composition with parallel loading
+// day 30 — parallel composition
 const dashboard = await Bind({
   user: getUser(1),
   config: getConfig().recover(defaultConfig)
-})
-.bind({
+}).bind({
   posts: ({ user }) => getPosts(user.id).recover([])
 })
 ```
 
-### Why This Matters
-
-- **No lock-in**: wrap existing Promise-returning functions, don't rewrite them
-- **No big refactor**: one endpoint at a time, no flag day
-- **No learning cliff**: your team keeps using `await` as usual, learns `recover` later
-- **No breaking changes**: `Future` is a `Promise` — drop it into any `Promise.all` or `await` expression
+No flag day, no rewrite of functions that already return promises — `Future.of` wraps them as-is, and everything downstream is opt-in.
 
 ---
 
@@ -152,100 +119,104 @@ const dashboard = await Bind({
 
 | | Future | Native Promise |
 |---|---|---|
-| Typed errors | ✅ `Future<T, E>` | ❌ `Promise<T>` (err: unknown) |
-| Parallel composition | ✅ `Bind` / `.bind` | ⚠️ `Promise.all` + manual destructure | 
-| Error recovery | ✅ `recover` / `recoverIf` | ⚠️ `.catch()` | 
-| Success → error | ✅ `throw` / `throwIf` | ❌ manual throw |
-| Side effects | ✅ `tap` / `tapErr` / `finally` | ⚠️ manual | 
-| Pattern matching | ✅ `match` | ❌ |
-| await compatible | ✅ native `await` | ✅ native |
+| Typed errors | `Future<T, E>` | `Promise<T>`, `catch` gives `unknown` |
+| Parallel composition | `Bind` / `.bind`, context carries forward | `Promise.all` + manual destructuring |
+| Error recovery | `recover` / `recoverIf`, narrows `E` | `.catch()`, loses the type |
+| Success → error | `throw` / `throwIf` | manual `throw` inside `.then` |
+| Side effects | `tap` / `tapErr` / `finally` | manual, easy to accidentally swallow the value |
+| Pattern matching | `match` | — |
+| `await` compatible | native | native |
 
 ---
 
+## Core concepts
 
-## Core Concepts
+### The error type survives the chain
 
-### Typed Errors
-
-`Future<T, E>` tracks the error type alongside the success type. `E` survives through `map`, `andThen`, and `recover` — the compiler always knows what can fail.
+`E` isn't a comment, it's tracked through `map`, `andThen`, `recoverIf` — anywhere the operation could still fail:
 
 ```ts
 const user: Future<User, ApiError> = api.getUser()
 
 user
-  .map(u => u.name)        // Future<string, ApiError>
-  .andThen(name => ...)     // still ApiError
-  .recoverIf(               // narrowed but still ApiError
+  .map(u => u.name)          // Future<string, ApiError>
+  .andThen(name => ...)      // still ApiError, or wider if the next step adds errors
+  .recoverIf(                // narrowed, but ApiError isn't gone yet
     err => err.status === 404,
     null
   )
 ```
 
-### Parallel by Default
+The one place this can slip: `Future.of(fn)` without a second argument infers `E` as `unknown`, same as a bare `.catch()`. Pass an error transformer if you want it typed:
 
-`Bind` and `.bind` run independent operations concurrently:
+```ts
+Future.of(() => JSON.parse(str))                                  // Future<any, unknown>
+Future.of(somePromise, err => new ApiError(err))                  // Future<Some, ApiError>
+```
+
+### Parallel by default
+
+`Bind` and `.bind` fire everything in the object concurrently — nothing runs sequentially unless a later field's function reads an earlier one out of the context:
 
 ```ts
 const data = await Bind({
   user: api.getUser(),       // }
-  config: api.getConfig(),   // } these three — parallel
+  config: api.getConfig(),   // } all three in parallel
   flags: api.getFlags()      // }
-})
-.bind({
-  posts: ({ user }) => api.getPosts(user.id),     // } these two — parallel,
-  recs:  ({ user }) => api.getRecs(user.id)       // } wait for user
+}).bind({
+  posts: ({ user }) => api.getPosts(user.id),  // } both wait for `user`,
+  recs:  ({ user }) => api.getRecs(user.id)    // } then run together
 })
 ```
 
-### Declarative Error Handling
+### Only `recover` clears the error type
 
-Handle errors where they happen, not in a single catch-all:
+`recoverIf` narrows — errors that don't match the predicate keep flowing as `E`. `recover` is unconditional — after it, the chain is guaranteed to succeed and `E` becomes `never`. That's the whole reason the dashboard example above ends on `.recover(null)` rather than another `.recoverIf`.
 
 ```ts
 const result = await api.getUser()
-  .recoverIf(err => err.status === 404, null)  // 404 → null
-  .throwIf(user => user === null, new Error('User required')) // null → error
-  .map(user => user.name)  // user is definitely User here
+  .recoverIf(err => err.status === 404, null)        // Future<User | null, ApiError>
+  .throwIf(user => user === null, new Error('...'))  // narrows back to User
+  .map(user => user.name)                            // user is definitely User here
 ```
 
-### Promise Compatibility
+### It's still a Promise
 
 ```ts
-// await works natively
-const value = await Ok(42)  // 42
-
-// then / catch work too
+const value = await Ok(42)          // 42
 Ok(42).then(v => console.log(v))
 Err(err).catch(e => console.error(e))
 ```
+
+Pass a `Future` anywhere a `Promise` is expected — `Promise.all`, an `await`, a library that takes a promise-returning callback. Nothing needs to know the difference.
 
 ---
 
 ## API
 
-### Creation
+### Creating one
 
 ```ts
-Ok(42)                     // Future<number, never>
-Ok()                       // Future<void, never>
-Err(new ApiError(400))  // Future<never, ApiError>
-Future.of(() => JSON.parse(str)) // Future<any, unknown>
-Future.of(somePromise, err => new ApiError(err)) // Future<Promise<Some>, ApiError>
-Begin<ApiError>()               // Future<void, ApiError>
+Ok(42)                                          // Future<number, never>
+Ok()                                             // Future<void, never>
+Err(new ApiError(400))                           // Future<never, ApiError>
+Future.of(() => JSON.parse(str))                 // Future<any, unknown> — catches sync throws too
+Future.of(somePromise, err => new ApiError(err)) // Future<Some, ApiError>
+Begin<ApiError>()                                // Future<void, ApiError> — a typed starting point
 ```
 
-### Context Composition
+### Context composition
 
 ```ts
-// Static Bind — creates context from independent Futures
+// Bind — starts a context from independent Futures (or plain values)
 const ctx = await Bind({
   user: api.getUser(),
   posts: api.getPosts(),
-  extra: 42                    // plain values work too
+  extra: 42
 })
 // ctx: { user: User, posts: Post[], extra: number }
 
-// .bind — extends context with access to previous fields
+// .bind — extends the context, later fields can read earlier ones
 const full = await Bind({ user: api.getUser() })
   .bind({
     posts: ({ user }) => api.getPosts(user.id),
@@ -259,41 +230,39 @@ const full = await Bind({ user: api.getUser() })
 ### Transformations
 
 ```ts
-future.map(value => transform(value))     // change success, preserve error
-future.mapErr(err => new ApiError(err))   // change error, preserve success
-future.andThen(value => anotherFuture())  // chain: success → new Future
-future.orElse(err => fallbackFuture())    // chain: error → new Future
+future.map(fn)      // change the success value, error untouched
+future.mapErr(fn)    // change the error value, success untouched
+future.andThen(fn)   // success → new Future; error type widens if fn can fail differently
+future.orElse(fn)    // error → new Future — a fallback chain
 ```
 
-### Error Handling
+### Error handling
 
 ```ts
-// Error → Success
-future.recover(defaultValue)              // all errors → value
-future.recoverIf(predicate, fallback)     // matching errors → value
+future.recover(value | (err) => value)          // any error → success, E becomes never
+future.recoverIf(predicate, value | handler)     // matching errors → success, E stays for the rest
 
-// Success → Error
-future.throw(errorValue)                  // all success → error
-future.throwIf(predicate, errorValue)     // matching success → error
+future.throw(value | (val) => value)             // unconditionally becomes a failure
+future.throwIf(predicate, value | handler)       // matching success values become a failure
 ```
 
-### Side Effects
+### Side effects
 
 ```ts
-future.tap(value => console.log(value))   // log success, chain unchanged
-future.tapErr(err => sentry.capture(err)) // log error, chain unchanged
-future.finally(() => setLoading(false))   // cleanup regardless of outcome
+future.tap(fn)       // runs on success, doesn't change the value — can itself fail, widening E
+future.tapErr(fn)    // runs on error, re-throws the original error afterward
+future.finally(fn)   // runs either way, for cleanup
 ```
 
-### Unwrapping
+### Getting the value out
 
 ```ts
-await future.unwrap()                     // T — throws on failure
-await future.unwrapOr(default)            // T | default — no throw
-await future.unwrapOrElse(err => fallback) // T | fallback — from function
-await future.expect('User load failed')   // T — with custom error message
-await future.isOk()                       // boolean
-await future.isErr()                      // boolean
+await future.unwrap()                       // T — rejects the promise if the Future failed, same as await
+await future.unwrapOr(fallback)              // T | fallback, never throws
+await future.unwrapOrElse(err => fallback)   // T | fallback, computed from the error
+await future.expect('User load failed')      // T — prefixes a custom message onto the thrown error
+await future.isOk()                          // boolean
+await future.isErr()                         // boolean
 
 await future.match({
   ok: value => `Got ${value}`,
@@ -301,53 +270,51 @@ await future.match({
 })
 ```
 
-### Static Methods
+### Static combinators
 
 ```ts
-Future.all([a, b, c])     // wait for all, fail if any fails
-Future.any([a, b, c])     // first success, AggregateError if all fail
-Future.race([a, b, c])    // first to complete (success or failure)
-Future.isFuture(obj)      // type guard
+Future.all([a, b, c])      // wait for all, fails on the first rejection
+Future.any([a, b, c])      // first success, AggregateError if every one fails
+Future.race([a, b, c])     // first to settle, success or failure
+Future.withResolvers()     // { future, resolve, reject } — resolve/reject it from outside its executor
+Future.isFuture(x)         // type guard
 ```
-
 
 ---
 
-## Real-World Examples
+## A couple of real examples
 
-### Form with Dependent Lookups
+**Form with dependent lookups:**
 
 ```ts
 const formData = await Bind({
   categories: api.getCategories(),
   countries: api.getCountries()
-})
-.bind({
+}).bind({
   cities: ({ countries }) => api.getCities(countries[0].id),
   subcategories: ({ categories }) => api.getSubcategories(categories[0].id)
 })
 // Future<FormData, ApiError>
 ```
 
-### 404 → null, Propagate Other Errors
+**404 becomes null, everything else stays an error:**
 
 ```ts
 const user = await api.getUser()
   .recoverIf(err => err.status === 404, null)
 // Future<User | null, ApiError>
-// 404 becomes null, everything else stays as error
 ```
 
-### Chain with Fallback
+**Fallback chain with a hard default at the end:**
 
 ```ts
 const data = await api.getPrimary()
   .orElse(() => api.getSecondary())
   .orElse(() => api.getCached())
   .recover(defaultValue)
-// Tries primary → secondary → cached → default
+// primary → secondary → cached → default, in that order
 ```
 
----
+## License
 
-
+MIT
